@@ -1,0 +1,198 @@
+#!/usr/bin/env python
+#
+# gregex
+# Copyright (C) Thura Hlaing 2009 <thurahlaing06@gmail.com>
+# 
+# main.py is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# gregex is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along
+# with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import pygtk
+pygtk.require("2.0")
+
+import gtk
+import os
+import codecs
+import cPickle as pickle
+import re
+import locale, gettext 
+
+ARP	= "gregex"
+PO_DIR 	= "po/"
+class GregexGui:
+ 
+    def on_window_destroy(self, widget, data=None):
+        #Store settings before exit
+        dict = {'entry':self.entry.get_text(),
+                'text' :self.str_buf}
+        file = codecs.open(os.environ['HOME']+"/.gregex","w")
+        pickle.dump(dict, file)
+        file.close()
+        gtk.main_quit()
+
+    def on_key_press(self, widget, event, data=None):
+        """ callback func, which will call eval func if Enter is pressed on entry box """
+        if event.keyval == 65293: # if gtk.gdk.keyval_name(event.keyval) = 'Return'
+            self.on_evaluate(self, widget)
+            
+    def on_evaluate(self, widget, data=None):
+        """ callback func, which will evaluate the regex """
+        count        = 0        
+        expr         = self.entry.get_text()
+        buffer       = self.samp_textview.get_buffer()
+        self.str_buf = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+        
+        self.text_buffer.set_text(self.str_buf)
+        
+        if expr and self.str_buf:            
+            try:            
+                iter = re.finditer(expr, self.str_buf.decode(), self.flags['I'] | self.flags['L'] | self.flags['M'] | \
+                                              self.flags['S'] | self.flags['U'] | self.flags['V'])
+                #print expr
+                #print self.str_buf
+                #print self.flags['I'] | self.flags['L'] | self.flags['M'] | \
+                #      self.flags['S'] | self.flags['U'] | self.flags['V']
+                
+                while True:
+                    
+                    if not self.find_all and count > 0:
+                        raise StopIteration
+                    
+                    next        = iter.next()                                       
+                    start, end  = next.span()                 
+                    
+                    #insert '('                  
+                    start_iter  = self.text_buffer.get_iter_at_offset(start + count * 4)  
+                    self.text_buffer.insert(start_iter, "( ")
+                    
+                    #color '('
+                    start_iter  = self.text_buffer.get_iter_at_offset(start + count * 4)
+                    end_iter    = self.text_buffer.get_iter_at_offset(start + count * 4 + 1)                    
+                    self.text_buffer.apply_tag(self.paren_tag, start_iter, end_iter)
+                    
+                    end += 2 # since we added '( '                    
+                    
+                    #insert ')'
+                    end_iter    = self.text_buffer.get_iter_at_offset(end   + count * 4)
+                    self.text_buffer.insert(end_iter, ") ")
+                    
+                    #color ')'
+                    start_iter  = self.text_buffer.get_iter_at_offset(end + count * 4)
+                    end_iter    = self.text_buffer.get_iter_at_offset(end + count * 4 + 1)                    
+                    self.text_buffer.apply_tag(self.paren_tag, start_iter, end_iter)                    
+                    
+                    end += 2 # since we added ') '
+                    
+                    #color the matched text between '(' and ')'                  
+                    start_iter  = self.text_buffer.get_iter_at_offset(start + count * 4 + 1)
+                    end_iter    = self.text_buffer.get_iter_at_offset(end   + count * 4 - 1)                    
+                    self.text_buffer.apply_tag(self.text_tag, start_iter, end_iter)
+                    
+                    count += 1                  
+                    
+            except StopIteration:
+                if count == 0:
+                    self.text_buffer.set_text("No matches found.")
+            finally:
+               #Append the completion list, if there is no duplicates
+                for row in self.compl_list:
+                    if row[0] == expr:
+                        break
+                else:
+                    self.compl_list.append([expr])
+                
+            self.match_textview.set_buffer(self.text_buffer)
+            self.notebook.set_current_page(1)
+
+    def on_button_toggle(self, button, data=None):
+        """ callback func on method toggle butttons change """    
+        # self.find_all = self.rb_all.get_active() ? True : False
+        self.find_all = self.rb_all.get_active() and True or False
+            
+    def on_button_change(self, button, data=None):
+        """ callback func on flags check butttons change """
+        if   button == self.ignore_button:
+            self.flags['I'] = self.flags['I'] == 0 and 2 or 0
+        elif button == self.locale_button:
+            self.flags['L'] = self.flags['L'] == 0 and 4 or 0
+        elif button == self.multi_button:
+            self.flags['M'] = self.flags['M'] == 0 and 8 or 0
+        elif button == self.dotall_button:
+            self.flags['S'] = self.flags['S'] == 0 and 16 or 0
+        elif button == self.unicode_button:
+            self.flags['U'] = self.flags['U'] == 0 and 32 or 0        
+        else:
+            self.flags['V'] = self.flags['V'] == 0 and 64 or 0
+        
+    def __init__(self):
+
+        locale.setlocale(locale.LC_ALL, '')
+        gettext.bindtextdomain(ARP, PO_DIR)
+        gettext.textdomain(ARP)   
+        
+        builder = gtk.Builder()
+        builder.add_from_file('data/gregex.glade') #FIXME hardcoded file location to work with setup.py ;(
+        builder.set_translation_domain(ARP)
+        
+        self.find_all       = True
+        self.flags          = { 'I': 0, 'L': 0, 'M': 0, 'S': 0, 'U': 0, 'V': 0 }
+        self.str_buf        = ""
+
+        self.window         = builder.get_object("window")
+        self.entry	        = builder.get_object("regex-entry").child        
+        self.entry_combo    = builder.get_object("regex-entry")
+        self.entry_compl    = builder.get_object("regex-entry-compl")
+        self.compl_list     = builder.get_object("compl-list")
+        
+        self.notebook       = builder.get_object("notebook")
+        self.samp_textview  = builder.get_object("sample-textview")
+        self.match_textview = builder.get_object("match-textview")
+        self.text_buffer    = builder.get_object("text-buffer")
+        self.tag_table      = builder.get_object("tag-table")
+        self.text_tag      = builder.get_object("text-tag")
+        self.paren_tag      = builder.get_object("paren-tag")
+        self.tag_table.add(self.text_tag)
+        self.tag_table.add(self.paren_tag)
+        
+        self.rb_first       = builder.get_object("find-first-button")
+        self.rb_all         = builder.get_object("find-all-button")
+        
+        self.ignore_button  = builder.get_object("ignore-button")
+        self.locale_button  = builder.get_object("locale-button")
+        self.multi_button   = builder.get_object("multi-button")
+        self.verbose_button = builder.get_object("verbose-button")
+        self.dotall_button  = builder.get_object("dotall-button")
+        self.unicode_button = builder.get_object("unicode-button")     
+                                                        
+        self.entry_combo.set_text_column(0)
+        self.entry_compl.set_text_column(0)
+        self.entry.set_completion(self.entry_compl)
+        
+        self.entry.connect("key-press-event", self.on_key_press)        
+        
+        #try to load settings
+        try:
+            with codecs.open(os.environ['HOME']+"/.gregex","r") as file:
+                dict = pickle.load(file)
+                self.entry.set_text(dict['entry'])
+                self.samp_textview.get_buffer().set_text(dict['text'])
+                self.str_buf = dict['text']
+        except:
+            pass
+        
+        builder.connect_signals(self)       
+
+if __name__ == "__main__":
+	app = GregexGui()
+	app.window.show_all()
+	gtk.main()
+

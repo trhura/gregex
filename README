@@ -1,0 +1,19 @@
+=============================
+==== gregex ==============
+=============================
+gregex is simple, light regular expression playground, used to test/learn regular expression, written in python.
+It is based on kiki, but is more light-weight, have fewer dependencies (no wx), and simpler interface.
+
+== DEPENDENCIES =============
+
+* python
+* PyGTK >= 2.10
+
+== INSTALLATION =============
+Install with
+  python setup.py install
+and run with
+  gregex
+
+== AUTHORS ==================
+gregex was written by Thura Hlaing <thurahlaing06@gmail.com>.
